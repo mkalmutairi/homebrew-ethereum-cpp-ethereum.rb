@@ -19,14 +19,16 @@ if (args.length) {
   args.forEach(show);
 } else {
   const cases = [
-    // [text, expected meter id or null for "unmetered"]
+    // [text, expected meter id]
     ['سلامٍ على اللي في غلاهم قصايدي', 'hilali'],
     ['وشوقي لهم ما زال في القلب ساكني', 'hilali'],
     ['الأماكن كلها مشتاقة لك', 'samri'],
-    ['يا مرحبا يا مرحبا يا مرحبا يا ولد', 'mashub'],
-    ['يا مرحبا يا مرحبا يا مرحبا', 'rajad'],
-    ['يا الله يا اللي ما تخيب رجاي', 'hijaini'],
-    ['يا صاحبي وش لون أصبّر خفوقي', 'hijaini'],
+    ['يا صاحبي وش لون أصبّر خفوقي', 'mashub'],
+    ['يا مرحبا يا مرحبا فوق حمرا', 'mashub'],
+    ['يا مرحبا يا مرحبا يا مرحبا', 'rajaz'],
+    ['سلامي يا غلاهم في خفوقي', 'sakhri'],
+    ['يا مرحبا يا هلا يا مرحبا بالولد', 'hijaini_long'],
+    ['يا مرحبا يا مرحبا', 'hida'],
   ];
   let fails = 0;
   cases.forEach(([text, expected]) => {

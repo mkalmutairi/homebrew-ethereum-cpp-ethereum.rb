@@ -17,6 +17,13 @@ const TRIPLE_COST = 0.4;
 // A meter counts as a natural reading of a hemistich only if its reading cost
 // is within this margin of the hemistich's best zero-error reading.
 export const NATURAL_MARGIN = 0.6;
+// A zero-error reading that needs more than this much "forcing" (unwritten
+// tanwins, pronounced همزة وصل, consonantal و/ي...) is strained: it is ranked
+// like a reading with one error and never makes a verse متزن on its own.
+export const NATURAL_ABS = 1.6;
+// Meters that are rare in Nabati rank slightly below the common ones when
+// several fit equally well.
+const RARE_COST = 1.0;
 
 // Actions
 const A_MATCH = 1, A_SUB = 2, A_EXTRA = 3, A_MISSING = 4, A_DROP = 5, A_COLLAPSE = 6;
@@ -184,9 +191,11 @@ export function analyzeHemistich(text) {
       if (p.pattern.length - units.length > 6) return;
       const a = align(units, p.pattern);
       if (!a) return;
-      const total = a.edits * EDIT + a.cost + p.cost;
+      const cost = a.cost + p.cost + (meter.rare ? RARE_COST : 0);
+      const strained = a.edits === 0 && cost > NATURAL_ABS;
+      const total = a.edits * EDIT + cost + (strained ? EDIT : 0);
       if (!bestForMeter || total < bestForMeter.total) {
-        bestForMeter = { meter, patternInfo: p, alignment: a, total, edits: a.edits, cost: a.cost + p.cost };
+        bestForMeter = { meter, patternInfo: p, alignment: a, total, edits: a.edits, cost, strained };
       }
     });
     if (bestForMeter) result.results.push(bestForMeter);
@@ -201,7 +210,7 @@ export function analyzeHemistich(text) {
     delete r.alignment;
   });
   result.best = result.results[0] || null;
-  result.ok = !!result.best && result.best.edits === 0;
+  result.ok = !!result.best && result.best.edits === 0 && !result.best.strained;
   // Only show alternative meters whose reading is nearly as natural as the best one.
   result.alternatives = result.results
     .filter((r) => r.edits === 0 && r !== result.best && r.cost - result.best.cost <= NATURAL_MARGIN)
@@ -225,7 +234,7 @@ export function analyzeVerse(first, second) {
   // A meter is a natural reading of a hemistich when it has no errors and its
   // reading cost is close to that hemistich's best reading. The verse is only
   // متزن when one meter is a natural reading of BOTH hemistichs.
-  const natural = (h, r) => r.edits === 0 && h.best && r.cost - h.best.cost <= NATURAL_MARGIN;
+  const natural = (h, r) => r.edits === 0 && !r.strained && h.best && r.cost - h.best.cost <= NATURAL_MARGIN;
   let best = null;
   METERS.forEach((m) => {
     const r1 = h1.results.find((r) => r.meter.id === m.id);

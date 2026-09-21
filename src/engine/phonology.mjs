@@ -20,7 +20,7 @@ const HAMZA_LETTERS = new Set('أإؤئء');
 
 // Words that begin with "ال" but where it is NOT the definite article.
 const NOT_ARTICLE = new Set([
-  'الى', 'الي', 'اليك', 'اليه', 'اليها', 'اليهم', 'اليكم', 'الين', 'الينا',
+  'الى', 'اليك', 'اليه', 'اليها', 'اليهم', 'اليكم', 'الين', 'الينا',
   'الا', 'الف', 'الفين', 'الم', 'اله', 'الهي', 'الهك', 'الهم',
 ]);
 
@@ -29,7 +29,7 @@ const WASL_PREFIXES = ['ابن', 'ابنة', 'است', 'اثن', 'اسم', 'ام
 
 // Words written with a "dagger alif" or other unwritten long vowel.
 const SPELLING = {
-  'الله': 'اللاه', 'اللهم': 'اللاهم', 'لله': 'لللاه', 'ولله': 'ولللاه', 'فلله': 'فلللاه',
+  'الي': 'اللي', 'والي': 'واللي', 'الله': 'اللاه', 'اللهم': 'اللاهم', 'لله': 'لللاه', 'ولله': 'ولللاه', 'فلله': 'فلللاه',
   'هذا': 'هاذا', 'هذه': 'هاذه', 'هذي': 'هاذي', 'هذاك': 'هاذاك', 'هذيك': 'هاذيك',
   'هذول': 'هاذول', 'هذولا': 'هاذولا', 'هذيلا': 'هاذيلا', 'هذاكم': 'هاذاكم',
   'ذلك': 'ذالك', 'ذلكم': 'ذالكم', 'لكن': 'لاكن', 'لكنه': 'لاكنه', 'لكنها': 'لاكنها',
@@ -230,7 +230,7 @@ export function textToUnits(rawText) {
       if (ch === 'و' || ch === 'ي') {
         if (isInitial && n === 1) return [['/', 0], ['o', 0.2]];
         if (isInitial) return [['/', 0], ['o', 0.3]];
-        const opts = [['o', 0], ['/', 0.3]];
+        const opts = [['o', 0], ['/', 0.5]];
         if (isFinal && nextHasArticle) opts.push(['', 0]);
         return opts;
       }
@@ -259,7 +259,7 @@ export function textToUnits(rawText) {
       }
       if (art.alifIndex >= 0) {
         const alif = letters[art.alifIndex];
-        const opts = units.length === 0 ? [['/', 0]] : [['', 0], ['/', 1]];
+        const opts = units.length === 0 ? [['/', 0]] : [['', 0], ['/', 1.5]];
         push(alif, opts, { article: true });
       }
       const stemFirst = letters[art.stemStart];
@@ -270,8 +270,8 @@ export function textToUnits(rawText) {
       } else if (stemFirst && (stemFirst.ch === 'ا' || HAMZA_LETTERS.has(stemFirst.ch)) && !stemFirst.vowel && !stemFirst.sukun) {
         // Article before a hamza (الأوزان، الأمير): the dialect drops the
         // hamza and the lam becomes the onset of the next syllable (لُوزان).
-        push(letters[art.stemStart - 1], [['o', 0], ['/', 0.3]], { article: true });
-        withDiacritics(stemFirst, [['/', 0], ['', 0.3]], art.stemStart);
+        push(letters[art.stemStart - 1], [['o', 0], ['/', 0.4]], { article: true });
+        withDiacritics(stemFirst, [['/', 0], ['', 0.4]], art.stemStart);
       } else {
         push(letters[art.stemStart - 1], [['o', 0]], { article: true });
         if (stemFirst) withDiacritics(stemFirst, n - 1 === art.stemStart ? [['o', 0], ['/', 0.3]] : [['/', 0]], art.stemStart);

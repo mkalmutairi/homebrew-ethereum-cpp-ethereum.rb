@@ -63,6 +63,10 @@ if (args.length) {
     console.log(`VERSE(mixed) ${vm.ok ? 'FAIL' : 'PASS'}: ${vm.message}`);
     if (vm.ok) fails++;
   });
+  // Both hemistichs broken: neither may be reported as متزن.
+  const vb = analyzeVerse('مثل الشجر وانته الي معك ماء', 'تموت ما قالت مع الوقت عطني');
+  console.log(`VERSE(broken) ${vb.ok || vb.h1.ok || vb.h2.ok ? 'FAIL' : 'PASS'}: ${vb.message}`);
+  if (vb.ok || vb.h1.ok || vb.h2.ok) fails++;
   const bad = show('سلامٍ على اللي في غلاهم قصايدي كثير');
   if (bad.ok) fails++;
   console.log(fails ? `\n${fails} FAILURES` : '\nALL PASS');

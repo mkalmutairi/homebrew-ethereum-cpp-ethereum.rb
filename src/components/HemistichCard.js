@@ -31,6 +31,8 @@ export default function HemistichCard({ label, value, onChangeText, result, cont
     } else if (contextual) {
       const closest = result.best.meter.id !== contextMeterId ? ` — وأقرب بحر له وحده: ${result.best.meter.name}` : '';
       verdict = { ok: false, text: `✗ غير موزون على بحر ${best.meter.name} (بحر الشطر الآخر): ${countText(best.errors.length)}${closest}` };
+    } else if (best.strained) {
+      verdict = { ok: false, text: `✗ غير موزون على الأرجح — أقرب قراءة على ${best.meter.name} متكلّفة، راجع التقطيع` };
     } else {
       verdict = { ok: false, text: `✗ غير موزون — أقرب بحر: ${best.meter.name} (${countText(best.errors.length)})` };
     }

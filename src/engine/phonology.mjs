@@ -267,6 +267,11 @@ export function textToUnits(rawText) {
         // sun letter: the lam assimilates, the stem letter is doubled
         push(stemFirst, [['o', 0]], { article: true });
         withDiacritics({ ...stemFirst, shadda: false, sukun: false }, [['/', 0]], art.stemStart);
+      } else if (stemFirst && (stemFirst.ch === 'ا' || HAMZA_LETTERS.has(stemFirst.ch)) && !stemFirst.vowel && !stemFirst.sukun) {
+        // Article before a hamza (الأوزان، الأمير): the dialect drops the
+        // hamza and the lam becomes the onset of the next syllable (لُوزان).
+        push(letters[art.stemStart - 1], [['o', 0], ['/', 0.3]], { article: true });
+        withDiacritics(stemFirst, [['/', 0], ['', 0.3]], art.stemStart);
       } else {
         push(letters[art.stemStart - 1], [['o', 0]], { article: true });
         if (stemFirst) withDiacritics(stemFirst, n - 1 === art.stemStart ? [['o', 0], ['/', 0.3]] : [['/', 0]], art.stemStart);

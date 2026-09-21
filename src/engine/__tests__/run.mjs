@@ -29,6 +29,8 @@ if (args.length) {
     ['سلامي يا غلاهم في خفوقي', 'sakhri'],
     ['يا مرحبا يا هلا يا مرحبا بالولد', 'hijaini_long'],
     ['يا مرحبا يا مرحبا', 'hida'],
+    ['يا البندري يوم القصيده و الاوزان', 'mashub'],
+    ['تستعجل الفكرة بشكلٍ خطيري', 'mashub'],
   ];
   let fails = 0;
   cases.forEach(([text, expected]) => {
@@ -41,6 +43,9 @@ if (args.length) {
   const v = analyzeVerse(cases[0][0], cases[1][0]);
   console.log('\nVERSE: ' + v.message);
   if (!v.ok) fails++;
+  const vUser = analyzeVerse('يا البندري يوم القصيده و الاوزان', 'تستعجل الفكرة بشكلٍ خطيري');
+  console.log('VERSE(user): ' + vUser.message);
+  if (!vUser.ok) fails++;
   const v2 = analyzeVerse(cases[0][0], cases[2][0]);
   console.log('VERSE(mixed): ' + v2.message);
   if (v2.ok) fails++;

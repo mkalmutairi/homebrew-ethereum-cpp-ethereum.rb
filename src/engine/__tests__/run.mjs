@@ -44,6 +44,19 @@ if (args.length) {
   const v2 = analyzeVerse(cases[0][0], cases[2][0]);
   console.log('VERSE(mixed): ' + v2.message);
   if (v2.ok) fails++;
+  // Hemistichs on different meters must never make a متزن verse.
+  const mixedPairs = [
+    ['سلامٍ على اللي في غلاهم قصايدي', 'يا صاحبي وش لون أصبّر خفوقي'],
+    ['يا صاحبي وش لون أصبّر خفوقي', 'سلامي يا غلاهم في خفوقي'],
+    ['يا مرحبا يا مرحبا فوق حمرا', 'الأماكن كلها مشتاقة لك'],
+    ['يا مرحبا يا هلا يا مرحبا بالولد', 'يا مرحبا يا مرحبا فوق حمرا'],
+    ['يا مرحبا يا مرحبا', 'سلامٍ على اللي في غلاهم قصايدي'],
+  ];
+  mixedPairs.forEach(([a, b]) => {
+    const vm = analyzeVerse(a, b);
+    console.log(`VERSE(mixed) ${vm.ok ? 'FAIL' : 'PASS'}: ${vm.message}`);
+    if (vm.ok) fails++;
+  });
   const bad = show('سلامٍ على اللي في غلاهم قصايدي كثير');
   if (bad.ok) fails++;
   console.log(fails ? `\n${fails} FAILURES` : '\nALL PASS');

@@ -11,6 +11,12 @@ import { EXPANDED, METERS } from './meters.mjs';
 
 const EDIT = 1000; // one prosodic error
 const INF = Number.POSITIVE_INFINITY;
+// Three consecutive متحركات are rare in the dialect (short vowels in open
+// syllables get dropped), so such a reading costs extra.
+const TRIPLE_COST = 0.4;
+// A meter counts as a natural reading of a hemistich only if its reading cost
+// is within this margin of the hemistich's best zero-error reading.
+export const NATURAL_MARGIN = 0.6;
 
 // Actions
 const A_MATCH = 1, A_SUB = 2, A_EXTRA = 3, A_MISSING = 4, A_DROP = 5, A_COLLAPSE = 6;
@@ -19,8 +25,9 @@ function align(units, pattern) {
   const n = units.length;
   const m = pattern.length;
   const W = m + 1;
-  const idx = (i, j, l) => ((i * W) + j) * 2 + l;
-  const size = (n + 1) * W * 2;
+  const L = 3; // 0: last symbol '/', 1: last symbol 'o' (or start), 2: last two symbols '//'
+  const idx = (i, j, l) => ((i * W) + j) * L + l;
+  const size = (n + 1) * W * L;
   const score = new Float64Array(size).fill(INF);
   const backState = new Int32Array(size).fill(-1);
   const backAct = new Int8Array(size).fill(0);
@@ -42,7 +49,7 @@ function align(units, pattern) {
   score[idx(0, 0, 1)] = 0; // l=1 forbids a leading ساكن
   for (let i = 0; i <= n; i++) {
     for (let j = 0; j <= m; j++) {
-      for (let l = 0; l < 2; l++) {
+      for (let l = 0; l < L; l++) {
         const from = idx(i, j, l);
         const s = score[from];
         if (s === INF) continue;
@@ -63,9 +70,11 @@ function align(units, pattern) {
             if (j < m && pattern[j] === '/') relax(from, i + 1, j + 1, 1, s + c + EDIT, A_SUB, 2);
             relax(from, i + 1, j, 1, s + c + EDIT, A_EXTRA, 2);
           } else {
-            if (j < m && pattern[j] === '/') relax(from, i + 1, j + 1, 0, s + c, A_MATCH, 1);
-            if (j < m && pattern[j] === 'o') relax(from, i + 1, j + 1, 0, s + c + EDIT, A_SUB, 1);
-            relax(from, i + 1, j, 0, s + c + EDIT, A_EXTRA, 1);
+            const nl = l === 1 ? 0 : 2;
+            const cc = c + (l === 2 ? TRIPLE_COST : 0);
+            if (j < m && pattern[j] === '/') relax(from, i + 1, j + 1, nl, s + cc, A_MATCH, 1);
+            if (j < m && pattern[j] === 'o') relax(from, i + 1, j + 1, nl, s + cc + EDIT, A_SUB, 1);
+            relax(from, i + 1, j, nl, s + cc + EDIT, A_EXTRA, 1);
           }
         }
       }
@@ -75,10 +84,12 @@ function align(units, pattern) {
   let end = idx(n, m, 1);
   let total = score[end];
   let endPenalty = 0;
-  if (score[idx(n, m, 0)] + EDIT < total) {
-    end = idx(n, m, 0);
-    total = score[end];
-    endPenalty = 1; // line ends on a متحرك
+  for (const l of [0, 2]) {
+    if (score[idx(n, m, l)] + EDIT < total) {
+      end = idx(n, m, l);
+      total = score[end];
+      endPenalty = 1; // line ends on a متحرك
+    }
   }
   if (total === INF) return null;
 
@@ -89,8 +100,8 @@ function align(units, pattern) {
     const prev = backState[cur];
     const act = backAct[cur];
     const sym = backSym[cur] === 1 ? '/' : backSym[cur] === 2 ? 'o' : '';
-    const pi = Math.floor(prev / (2 * W));
-    const pj = Math.floor(prev / 2) % W;
+    const pi = Math.floor(prev / (L * W));
+    const pj = Math.floor(prev / L) % W;
     steps.push({ act, unit: act === A_MISSING ? -1 : pi, pat: (act === A_MATCH || act === A_SUB || act === A_MISSING) ? pj : -1, sym });
     cur = prev;
   }
@@ -193,7 +204,7 @@ export function analyzeHemistich(text) {
   result.ok = !!result.best && result.best.edits === 0;
   // Only show alternative meters whose reading is nearly as natural as the best one.
   result.alternatives = result.results
-    .filter((r) => r.edits === 0 && r !== result.best && r.cost - result.best.cost <= 1.0)
+    .filter((r) => r.edits === 0 && r !== result.best && r.cost - result.best.cost <= NATURAL_MARGIN)
     .slice(0, 2);
   if (cache.size > 200) cache.clear();
   cache.set(key, result);
@@ -211,23 +222,31 @@ export function analyzeVerse(first, second) {
     verse.message = 'أدخل الشطرين لتقييم البيت كاملًا.';
     return verse;
   }
+  // A meter is a natural reading of a hemistich when it has no errors and its
+  // reading cost is close to that hemistich's best reading. The verse is only
+  // متزن when one meter is a natural reading of BOTH hemistichs.
+  const natural = (h, r) => r.edits === 0 && h.best && r.cost - h.best.cost <= NATURAL_MARGIN;
   let best = null;
   METERS.forEach((m) => {
     const r1 = h1.results.find((r) => r.meter.id === m.id);
     const r2 = h2.results.find((r) => r.meter.id === m.id);
     if (!r1 || !r2) return;
-    const total = r1.total + r2.total;
-    if (!best || total < best.total) best = { meter: m, r1, r2, total, edits: r1.edits + r2.edits };
+    const bothNatural = natural(h1, r1) && natural(h2, r2);
+    // Unnatural readings are ranked below any pair with an actual error count
+    // of the same size by adding a large penalty.
+    const total = r1.total + r2.total + (bothNatural ? 0 : EDIT);
+    if (!best || total < best.total) best = { meter: m, r1, r2, total, edits: r1.edits + r2.edits, bothNatural };
   });
   if (!best) { verse.message = 'تعذّر تحليل البيت.'; return verse; }
   verse.meter = best.meter;
   verse.r1 = best.r1;
   verse.r2 = best.r2;
   verse.edits = best.edits;
-  verse.ok = best.edits === 0;
+  verse.ok = best.edits === 0 && best.bothNatural;
   if (verse.ok) {
     verse.message = `البيت موزون على بحر ${best.meter.name} (${best.meter.classical}).`;
   } else if (h1.ok && h2.ok) {
+    verse.meter = null;
     verse.message = `كل شطر موزون على حدة، لكن الشطرين على بحرين مختلفين: الأول على ${h1.best.meter.name} والثاني على ${h2.best.meter.name}، فالبيت غير موزون.`;
   } else {
     const broken = [];

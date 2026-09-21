@@ -12,16 +12,20 @@ export default function HemistichCard({ label, value, onChangeText, result, cont
   // same meter so the errors shown are relative to the verse's meter.
   let best = result && result.best;
   let contextual = false;
-  if (result && !result.empty && !result.ok && contextMeterId) {
+  if (result && !result.empty && contextMeterId && best && best.meter.id !== contextMeterId) {
     const ctx = result.results.find((r) => r.meter.id === contextMeterId);
-    if (ctx) { best = ctx; contextual = true; }
+    // Show the reading on the verse's meter when it fits without errors, or
+    // when this hemistich is broken (so the errors relate to that meter).
+    if (ctx && (ctx.edits === 0 || !result.ok)) { best = ctx; contextual = true; }
   }
   const badWords = new Set(best ? best.errors.map((e) => e.wi) : []);
   const countText = (n) => (n === 1 ? 'خلل واحد' : n === 2 ? 'خللان' : `${n} أخطاء`);
 
   let verdict = null;
   if (result && !result.empty && best) {
-    if (result.ok) {
+    if (result.ok && contextual) {
+      verdict = { ok: true, text: `✓ موزون على بحر ${best.meter.name} — ${best.meter.classical} (بحر البيت)` };
+    } else if (result.ok) {
       const alt = result.alternatives.length ? ` (وقد يُقرأ على ${result.alternatives.map((a) => a.meter.name).join(' أو ')})` : '';
       verdict = { ok: true, text: `✓ موزون على بحر ${best.meter.name} — ${best.meter.classical}${alt}` };
     } else if (contextual) {

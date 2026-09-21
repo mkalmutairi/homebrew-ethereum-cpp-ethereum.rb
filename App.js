@@ -34,8 +34,10 @@ export default function App() {
   const r1 = useMemo(() => analyzeHemistich(first), [first]);
   const r2 = useMemo(() => analyzeHemistich(second), [second]);
   const verse = useMemo(() => analyzeVerse(first, second), [first, second]);
-  const ctx1 = r2.ok ? r2.best.meter.id : null;
-  const ctx2 = r1.ok ? r1.best.meter.id : null;
+  // Judge each hemistich against the verse's meter when there is one, else
+  // against the other hemistich's meter.
+  const ctx1 = verse.ok ? verse.meter.id : (r2.ok ? r2.best.meter.id : null);
+  const ctx2 = verse.ok ? verse.meter.id : (r1.ok ? r1.best.meter.id : null);
 
   const clear = () => { setFirst(''); setSecond(''); };
   const fillExample = () => { setFirst(EXAMPLE[0]); setSecond(EXAMPLE[1]); };

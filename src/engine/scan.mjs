@@ -135,7 +135,7 @@ function describeSteps(steps, units, patternInfo, words) {
     const foot = feet[Math.min(curFoot, feet.length - 1)];
     if (st.unit >= 0) {
       const u = units[st.unit];
-      foot.textUnits.push({ ch: u.ch, wi: u.wi, sym: st.sym, act: st.act, synthetic: !!u.synthetic });
+      foot.textUnits.push({ ch: u.ch, wi: u.wi, sym: st.sym, act: st.act, synthetic: !!u.synthetic, gem: !!u.gem });
       foot.wordIds.add(u.wi);
       if (st.sym) produced += st.sym;
     }
@@ -155,13 +155,16 @@ function describeSteps(steps, units, patternInfo, words) {
     // Build a readable chunk: letters grouped per word, silent letters shown in brackets.
     let text = '';
     let lastWi = -1;
+    let pendingShadda = false;
     f.textUnits.forEach((tu) => {
       if (tu.wi !== lastWi && text) text += ' ';
       lastWi = tu.wi;
-      if (tu.synthetic && !tu.sym) return; // dropped optional tanwin: hide
+      if (tu.synthetic && !tu.sym) return; // dropped optional unit: hide
+      if (tu.gem) { pendingShadda = true; return; } // doubled letter: show as shadda
       if (tu.act === A_DROP) text += ''; // silent letter, hide
       else if (tu.synthetic) text += tu.ch === 'ن' ? 'ـن' : tu.ch;
-      else text += tu.ch;
+      else text += tu.ch + (pendingShadda ? '\u0651' : '');
+      pendingShadda = false;
     });
     f.text = text.replace(/\s+/g, ' ').trim();
     f.weights = f.textUnits.map((tu) => tu.sym).join('');

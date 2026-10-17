@@ -30,9 +30,10 @@ const WASL_PREFIXES = ['ابن', 'ابنة', 'است', 'اثن', 'اسم', 'ام
 // Words written with a "dagger alif" or other unwritten long vowel.
 const SPELLING = {
   'الي': 'اللي', 'والي': 'واللي', 'الله': 'اللاه', 'اللهم': 'اللاهم', 'لله': 'لللاه', 'ولله': 'ولللاه', 'فلله': 'فلللاه',
-  'هذا': 'هاذا', 'هذه': 'هاذه', 'هذي': 'هاذي', 'هذاك': 'هاذاك', 'هذيك': 'هاذيك',
-  'هذول': 'هاذول', 'هذولا': 'هاذولا', 'هذيلا': 'هاذيلا', 'هذاكم': 'هاذاكم',
-  'ذلك': 'ذالك', 'ذلكم': 'ذالكم', 'لكن': 'لاكن', 'لكنه': 'لاكنه', 'لكنها': 'لاكنها',
+  // ٭ = long alif that the dialect may shorten (هاذا / هَذا)
+  'هذا': 'ه٭ذا', 'هذه': 'ه٭ذه', 'هذي': 'ه٭ذي', 'هذاك': 'ه٭ذاك', 'هذيك': 'ه٭ذيك',
+  'هذول': 'ه٭ذول', 'هذولا': 'ه٭ذولا', 'هذيلا': 'ه٭ذيلا', 'هذاكم': 'ه٭ذاكم',
+  'ذلك': 'ذ٭لك', 'ذلكم': 'ذ٭لكم', 'لكن': 'ل٭كن', 'لكنه': 'ل٭كنه', 'لكنها': 'ل٭كنها',
   'هؤلاء': 'هاؤلاء', 'الرحمن': 'الرحمان', 'اله': 'الاه', 'الاله': 'الالاه',
   'طه': 'طاها', 'السموات': 'السماوات', 'سموات': 'سماوات', 'داود': 'داوود',
   'اولئك': 'اولائك', 'يس': 'ياسين', 'الرحمان': 'الرحمان',
@@ -61,7 +62,7 @@ const LEXICON = {
   'اصبر': 'أَصْبِر', 'اصبرك': 'أَصْبِرك', 'يصبر': 'يِصْبِر', 'اسمع': 'أَسْمَع', 'يسمع': 'يِسْمَع', 'اعرف': 'أَعْرِف', 'يعرف': 'يِعْرِف', 'تعرف': 'تِعْرِف', 'اذكر': 'أَذْكِر', 'يذكر': 'يِذْكِر',
   'اشوف': 'أَشوف', 'ابغى': 'أَبْغى', 'ابغي': 'أَبْغي', 'ابي': 'أَبي', 'ابيك': 'أَبيك',
   'كثر': 'كِثْر', 'كثرت': 'كِثْرت', 'مشكلة': 'مِشْكِلة', 'مشكله': 'مِشْكِله', 'عذر': 'عُذْر', 'عذري': 'عُذْري', 'صبر': 'صَبْر', 'صبري': 'صَبْري', 'شوق': 'شوق', 'شوقي': 'شوقي',
-  'لكنك': 'لاكِنّك', 'لكني': 'لاكِنّي', 'لكنه': 'لاكِنّه',
+  'لكنك': 'ل٭كِنّك', 'لكني': 'ل٭كِنّي',
 };
 
 const ARABIC_CHAR = /[ء-غف-يٱًٰ-ْ]/;
@@ -87,16 +88,17 @@ function stripDiacritics(word) {
 function parseLetters(word) {
   const letters = [];
   for (const ch of word) {
-    if (SHORT_VOWELS.has(ch) || ch === SUKUN || ch === SHADDA || TANWIN.has(ch) || ch === DAGGER_ALIF) {
+    if (SHORT_VOWELS.has(ch) || ch === SUKUN || ch === SHADDA || TANWIN.has(ch) || ch === DAGGER_ALIF || ch === '٭') {
       const last = letters[letters.length - 1];
       if (!last) continue;
-      if (SHORT_VOWELS.has(ch)) last.vowel = true;
+      if (ch === '٭') last.optAlif = true;
+      else if (SHORT_VOWELS.has(ch)) last.vowel = true;
       else if (ch === SUKUN) last.sukun = true;
       else if (ch === SHADDA) last.shadda = true;
       else if (TANWIN.has(ch)) last.tanwin = true;
       else if (ch === DAGGER_ALIF) last.dagger = true;
     } else if (ARABIC_CHAR.test(ch)) {
-      letters.push({ ch, vowel: false, sukun: false, shadda: false, tanwin: false, dagger: false });
+      letters.push({ ch, vowel: false, sukun: false, shadda: false, tanwin: false, dagger: false, optAlif: false });
     }
   }
   return letters;
@@ -194,7 +196,16 @@ export function textToUnits(rawText) {
     };
 
     // Applies written diacritics on top of the default options.
+    const bareWord = stripDiacritics(word);
+    const userDiacritics = bareWord !== word;
+    const inLexicon = fixed !== word;
     const withDiacritics = (letter, opts, k) => {
+      // Unwritten shadda (جنه = جنّه، ولا = ولّا) is very common in Nabati
+      // writing: let a medial consonant be doubled at a small cost.
+      if (!userDiacritics && !inLexicon && !letter.shadda && letters.length === 3 && k === 1 &&
+          !'اىءأإ'.includes(letter.ch) && letters[k - 1] && !'اى'.includes(letters[k - 1].ch)) {
+        push(letter, [['', 0], ['o', 0.5]], { synthetic: true, gem: true });
+      }
       let o = opts;
       if (letter.vowel) o = [['/', 0]];
       else if (letter.sukun) o = [['o', 0]];
@@ -203,8 +214,10 @@ export function textToUnits(rawText) {
         o = letter.sukun ? [['o', 0]] : [['/', 0]];
       }
       if (letter.tanwin) o = [['/', 0]];
+      if (letter.optAlif) o = [['/', 0]];
       push(letter, o);
       if (letter.dagger) push({ ch: 'ا' }, [['o', 0]], { synthetic: true });
+      if (letter.optAlif) push({ ch: 'ا' }, [['o', 0], ['', 0.3]], { synthetic: true });
       if (letter.tanwin) push({ ch: 'ن' }, [['o', 0]], { synthetic: true, tanwin: true });
     };
 

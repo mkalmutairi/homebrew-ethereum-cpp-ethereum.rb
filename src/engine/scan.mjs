@@ -20,7 +20,7 @@ export const NATURAL_MARGIN = 0.6;
 // A zero-error reading that needs more than this much "forcing" (unwritten
 // tanwins, pronounced همزة وصل, consonantal و/ي...) is strained: it is ranked
 // like a reading with one error and never makes a verse متزن on its own.
-export const NATURAL_ABS = 1.6;
+export const NATURAL_ABS = 2.0;
 // Meters that are rare in Nabati rank slightly below the common ones when
 // several fit equally well.
 const RARE_COST = 1.0;

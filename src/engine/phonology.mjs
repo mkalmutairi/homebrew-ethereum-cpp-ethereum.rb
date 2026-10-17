@@ -65,6 +65,10 @@ const LEXICON = {
   'لكنك': 'ل٭كِنّك', 'لكني': 'ل٭كِنّي',
 };
 
+// Particles whose final long vowel may be shortened in singing (فِ وسطك، يَ راسي).
+const SHORTENABLE = new Set(['في', 'ما', 'لا', 'يا', 'على', 'الى', 'إلى', 'لو', 'او', 'أو', 'ذا', 'هو', 'هي',
+  'ولا', 'وما', 'ويا', 'فيا', 'فما', 'ولو', 'وفي', 'ففي', 'وعلى', 'وهو', 'وهي', 'الا', 'إلا']);
+
 const ARABIC_CHAR = /[ء-غف-يٱًٰ-ْ]/;
 
 export function normalize(text) {
@@ -199,12 +203,30 @@ export function textToUnits(rawText) {
     const bareWord = stripDiacritics(word);
     const userDiacritics = bareWord !== word;
     const inLexicon = fixed !== word;
+    // Unwritten shadda (جنّه، ولّا، صدّيت، تمنّيت، دلّته) is very common in
+    // Nabati writing. Find the letter that may be doubled: strip a verb prefix
+    // and a pronoun/verb suffix; a 2-letter core doubles its last letter, a
+    // 3-letter core its middle letter.
+    const gemIndex = (() => {
+      if (userDiacritics || inLexicon || art) return -1;
+      const b = letters.map((l) => l.ch).join('');
+      let start = 0;
+      let end = b.length;
+      const suffix = b.match(/(هم|كم|ها|نا|ني|يت|ته|تك|ه|ك|ي|ت)$/);
+      if (suffix && b.length - suffix[0].length >= 2) end -= suffix[0].length;
+      if (end - start >= 3 && 'ايتن'.includes(b[start]) && end - start <= 4) start += 1;
+      const core = end - start;
+      if (core === 2) return end - 1;
+      if (core === 3) return start + 1;
+      return -1;
+    })();
+    // rhyme shadda (جنّه، كنّه، ونّه): only before a final ه/ة of the last word
+    const rhymeIndex = isLastWord && letters.length >= 3 && 'هة'.includes(letters[letters.length - 1].ch) ? letters.length - 2 : -1;
     const withDiacritics = (letter, opts, k) => {
-      // Unwritten shadda (جنه = جنّه، ولا = ولّا) is very common in Nabati
-      // writing: let a medial consonant be doubled at a small cost.
-      if (!userDiacritics && !inLexicon && !letter.shadda && letters.length === 3 && k === 1 &&
-          !'اىءأإ'.includes(letter.ch) && letters[k - 1] && !'اى'.includes(letters[k - 1].ch)) {
-        push(letter, [['', 0], ['o', 0.5]], { synthetic: true, gem: true });
+      const canGem = !letter.shadda && !'اىءأإ'.includes(letter.ch) && letters[k - 1] && !'اى'.includes(letters[k - 1].ch) && k > 0 && k < letters.length - 1;
+      if (canGem && (k === gemIndex || (k === rhymeIndex && !userDiacritics))) {
+        const gemCost = k === rhymeIndex ? 0.3 : 'وي'.includes(letter.ch) ? 0.6 : 0.4;
+        push(letter, [['', 0], ['o', gemCost]], { synthetic: true, gem: true });
       }
       let o = opts;
       if (letter.vowel) o = [['/', 0]];
@@ -225,26 +247,40 @@ export function textToUnits(rawText) {
       const ch = letter.ch;
       const isFinal = k === n - 1;
       const isInitial = k === 0;
+      // A short particle (في، ما، لا، يا، على، لو…) often shortens its final
+      // long vowel in singing when another word follows (فِ وسطك، يَ راسي).
+      const shortParticle = isFinal && !isLastWord && !art && SHORTENABLE.has(bareWord);
       if (ch === 'ا') {
         if (isInitial) {
           if (isFirstWord) return [['/', 0]];
           return isWasl ? [['', 0], ['/', 0.5]] : [['/', 0], ['', 0.5]];
         }
+        // Alif right after a one-letter prefix is usually an unwritten hamza
+        // (وانا = وأنا، واشوف = وأشوف، وانت = وإنت) that may also be elided (وِنْت).
+        if (k === 1 && n >= 3 && 'وفبكل'.includes(letters[0].ch) && letters[2] && !'اوي'.includes(letters[2].ch)) {
+          return [['o', 0], ['/', 0.3], ['', 0.5]];
+        }
         const opts = [['o', 0]];
         if (isFinal && letters[k - 1] && letters[k - 1].ch === 'و' && n >= 3) opts.push(['', 0]);
         else if (isFinal && nextHasArticle) opts.push(['', 0]);
+        else if (shortParticle) opts.push(['', 0.3]);
         return opts;
       }
       if (ch === 'ى') {
         const opts = [['o', 0]];
         if (isFinal && nextHasArticle) opts.push(['', 0]);
+        else if (shortParticle) opts.push(['', 0.3]);
         return opts;
       }
       if (ch === 'و' || ch === 'ي') {
         if (isInitial && n === 1) return [['/', 0], ['o', 0.2]];
         if (isInitial) return [['/', 0], ['o', 0.3]];
-        const opts = [['o', 0], ['/', 0.5]];
+        // و/ي inside a word are normally long vowels; reading them as
+        // consonants (تَمْوَت) is rare, except right after a one-letter prefix (فوسطك).
+        const consonantCost = k === 1 && 'وفبكل'.includes(letters[0].ch) ? 0.3 : 0.8;
+        const opts = [['o', 0], ['/', consonantCost]];
         if (isFinal && nextHasArticle) opts.push(['', 0]);
+        else if (shortParticle) opts.push(['', 0.3]);
         return opts;
       }
       if (HAMZA_LETTERS.has(ch)) {
@@ -261,6 +297,13 @@ export function textToUnits(rawText) {
 
     const n = letters.length;
     let k = 0;
+    // A hemistich-initial hamza is often lengthened in singing (أشوف -> آشوف).
+    if (isFirstWord && !art && n >= 3 && (letters[0].ch === 'ا' || letters[0].ch === 'أ') &&
+        !letters[0].vowel && !letters[0].sukun && !isWasl && letters[1] && !'اوي'.includes(letters[1].ch)) {
+      push(letters[0], [['/', 0]]);
+      units.push({ ch: 'ا', wi, word, opts: [['', 0], ['o', 0.4]], synthetic: true, optional: true });
+      k = 1;
+    }
     if (art) {
       // prefix letters before the article (و، ف، ب، ك، ل، ه، ع)
       for (; k < art.prefixEnd; k++) {
@@ -292,13 +335,17 @@ export function textToUnits(rawText) {
       k = art.stemStart + 1;
     }
     for (; k < n; k++) {
+      const isGemParticle = n === 2 && k === 1 && !art && nextHasArticle && !userDiacritics && !'اوي'.includes(letters[k].ch);
+      if (isGemParticle) push(letters[k], [['', 0], ['o', 0.4]], { synthetic: true, gem: true });
       withDiacritics(letters[k], defaultOpts(letters[k], k, n), k);
     }
 
     // Optional unwritten tanwin (very common in Nabati: راكبٍ، قلبٍ، مشتاقةٍ)
     const last = letters[n - 1];
+    const bareForTanwin = letters.map((l) => l.ch).join('');
     const eligible = !art && !isLastWord && n >= 3 && last && !last.tanwin &&
-      !LONG_VOWEL_LETTERS.has(last.ch) && !HAMZA_LETTERS.has(last.ch);
+      !LONG_VOWEL_LETTERS.has(last.ch) && !HAMZA_LETTERS.has(last.ch) &&
+      !/(ك|هم|كم|نا|ني|ها)$/.test(bareForTanwin); // no tanwin after a pronoun suffix
     if (eligible) {
       units.push({ ch: 'ن', wi, word, opts: [['', 0], ['o', 0.6]], synthetic: true, tanwin: true, optional: true });
     }

@@ -2,23 +2,25 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { StatusBar } from 'expo-status-bar';
 import {
   SafeAreaView, View, Text, TextInput, StyleSheet, Pressable, FlatList,
-  RefreshControl, ActivityIndicator, AppState,
+  RefreshControl, ActivityIndicator, AppState, Platform,
 } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
 import { summarize, filterWells } from './src/data/wells.mjs';
-import { loadCached, sync, getUrl, setUrl } from './src/data/store';
+import { loadSaved, sync, getUrl, setUrl, importFile, clearImported } from './src/data/store';
 import Summary from './src/components/Summary';
 import WellRow from './src/components/WellRow';
 import WellDetail from './src/components/WellDetail';
 import SettingsSheet from './src/components/SettingsSheet';
 import { REFRESH_AFTER_MS } from './src/config';
 import { colors, font, rtl } from './src/theme';
-import { dateLabel, daysAgo, timeLabel } from './src/format';
+import { dateLabel, daysAgo, timeLabel, wellsCount } from './src/format';
 
 export default function App() {
   const [data, setData] = useState(null);
   const [url, setUrlState] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [query, setQuery] = useState('');
   const [field, setField] = useState(null);
   const [status, setStatus] = useState(null);
@@ -44,8 +46,8 @@ export default function App() {
   useEffect(() => {
     (async () => {
       setUrlState(await getUrl());
-      const cached = await loadCached();
-      if (cached) setData(cached);
+      const saved = await loadSaved();
+      if (saved) setData(saved);
       refresh();
     })();
   }, [refresh]);
@@ -57,6 +59,40 @@ export default function App() {
     });
     return () => sub.remove();
   }, [refresh]);
+
+  // Excel (.xlsx) or CSV. Android file managers often label .xlsx loosely, so
+  // accept any file there and let the importer check it.
+  const pickFile = async () => {
+    const res = await DocumentPicker.getDocumentAsync({
+      type: Platform.OS === 'android' ? '*/*' : [
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel', 'text/csv', 'text/comma-separated-values', '.xlsx', '.xls', '.csv',
+      ],
+      copyToCacheDirectory: true,
+    });
+    if (res.canceled || !res.assets || !res.assets.length) return;
+    setLoading(true);
+    try {
+      const { data: imported, count, date } = await importFile(res.assets[0]);
+      setUrlState('');
+      setData(imported);
+      setError(null);
+      setShowSettings(false);
+      setNotice(`تم استيراد ${wellsCount(count)}${date ? ` لبيانات يوم ${dateLabel(date)}` : ''} من ${res.assets[0].name}.`);
+    } catch (e) {
+      setNotice(null);
+      setError(e.message || 'تعذّر قراءة الملف.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const clearData = async () => {
+    await clearImported();
+    setShowSettings(false);
+    setNotice(null);
+    refresh();
+  };
 
   const saveUrl = async (u) => {
     await setUrl(u);
@@ -76,23 +112,33 @@ export default function App() {
   const header = (
     <View>
       <View style={styles.header}>
-        <Pressable onPress={() => setShowSettings(true)} hitSlop={10} style={styles.gear}>
-          <Text style={styles.gearText}>الإعدادات</Text>
-        </Pressable>
+        <View style={{ gap: 6 }}>
+          <Pressable onPress={pickFile} hitSlop={6} style={[styles.gear, styles.importBtn]}>
+            <Text style={[styles.gearText, { color: '#fff' }]}>استيراد Excel</Text>
+          </Pressable>
+          <Pressable onPress={() => setShowSettings(true)} hitSlop={6} style={styles.gear}>
+            <Text style={styles.gearText}>الإعدادات</Text>
+          </Pressable>
+        </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>آبار نفط الكويت</Text>
           <Text style={styles.subtitle}>
             {summary.latest ? `بيانات يوم ${dateLabel(summary.latest)}` : 'التقرير اليومي للآبار'}
-            {data && data.syncedAt ? ` · آخر مزامنة ${timeLabel(data.syncedAt)}` : ''}
+            {data && data.syncedAt ? ` · ${data.source === 'import' ? 'آخر استيراد' : 'آخر مزامنة'} ${timeLabel(data.syncedAt)}` : ''}
           </Text>
         </View>
       </View>
 
       {data && data.source === 'sample' ? (
-        <Pressable style={[styles.banner, { backgroundColor: colors.warnBg }]} onPress={() => setShowSettings(true)}>
+        <Pressable style={[styles.banner, { backgroundColor: colors.warnBg }]} onPress={pickFile}>
           <Text style={[styles.bannerText, { color: colors.warn }]}>
-            بيانات تجريبية للعرض فقط. اضغط هنا لربط جدول الآبار الحقيقي.
+            بيانات تجريبية للعرض فقط. اضغط هنا لاستيراد ملف Excel الخاص بالآبار.
           </Text>
+        </Pressable>
+      ) : null}
+      {notice ? (
+        <Pressable style={[styles.banner, { backgroundColor: colors.okBg }]} onPress={() => setNotice(null)}>
+          <Text style={[styles.bannerText, { color: colors.ok }]}>✓ {notice}</Text>
         </Pressable>
       ) : null}
       {error ? (
@@ -100,7 +146,14 @@ export default function App() {
           <Text style={[styles.bannerText, { color: colors.bad }]}>{error}</Text>
         </View>
       ) : null}
-      {data && data.source !== 'sample' && age !== null && age > 1 ? (
+      {data && data.source === 'import' && age !== null && age >= 1 && !notice ? (
+        <Pressable style={[styles.banner, { backgroundColor: colors.warnBg }]} onPress={pickFile}>
+          <Text style={[styles.bannerText, { color: colors.warn }]}>
+            آخر بيانات مستوردة ليوم {dateLabel(summary.latest)}. اضغط هنا لاستيراد ملف اليوم.
+          </Text>
+        </Pressable>
+      ) : null}
+      {data && (data.source === 'live' || data.source === 'cache') && age !== null && age > 1 ? (
         <View style={[styles.banner, { backgroundColor: colors.warnBg }]}>
           <Text style={[styles.bannerText, { color: colors.warn }]}>آخر قراءة في الجدول قبل {age} أيام — لم يُحدَّث الجدول بعد.</Text>
         </View>
@@ -125,7 +178,7 @@ export default function App() {
           ))}
         </View>
       ) : null}
-      <Text style={styles.count}>{shown.length} من {wells.length} بئر</Text>
+      <Text style={styles.count}>{shown.length === wells.length ? wellsCount(wells.length) : `${shown.length} من ${wells.length}`}</Text>
     </View>
   );
 
@@ -138,7 +191,7 @@ export default function App() {
         <FlatList
           data={shown}
           keyExtractor={(w) => w.id}
-          renderItem={({ item }) => <WellRow well={item} onPress={() => setSelected(item)} />}
+          renderItem={({ item }) => <WellRow well={item} latest={summary.latest} onPress={() => setSelected(item)} />}
           ListHeaderComponent={header}
           ListEmptyComponent={data ? <Text style={[styles.subtitle, { textAlign: 'center', marginTop: 30 }]}>لا توجد آبار مطابقة.</Text> : null}
           contentContainerStyle={styles.content}
@@ -147,7 +200,7 @@ export default function App() {
         />
       )}
       <WellDetail well={selected} onClose={() => setSelected(null)} />
-      <SettingsSheet visible={showSettings} url={url} data={data} onSave={saveUrl} onClose={() => setShowSettings(false)} />
+      <SettingsSheet visible={showSettings} url={url} data={data} onSave={saveUrl} onImport={pickFile} onClear={clearData} onClose={() => setShowSettings(false)} />
     </SafeAreaView>
   );
 }
@@ -160,6 +213,7 @@ const styles = StyleSheet.create({
   title: { fontSize: font.title, fontWeight: '800', color: colors.ink, ...rtl },
   subtitle: { fontSize: font.small, color: colors.muted, marginTop: 4, ...rtl },
   gear: { backgroundColor: colors.accentBg, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  importBtn: { backgroundColor: colors.accent },
   gearText: { color: colors.accent, fontWeight: '700', fontSize: font.small },
   banner: { borderRadius: 10, padding: 10, marginBottom: 10 },
   bannerText: { fontSize: font.small, fontWeight: '600', ...rtl },

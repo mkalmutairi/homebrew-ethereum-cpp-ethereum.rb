@@ -130,54 +130,107 @@ function iso(y, mo, d) {
   return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
+// How strongly a row looks like the header row: the number of known columns
+// it names, with a bonus for the well-name column.
+function headerScore(row) {
+  const seen = new Set();
+  for (const c of row) { const k = columnFor(c); if (k) seen.add(k); }
+  return seen.size + (seen.has('name') ? 1 : 0);
+}
+
+/** How well a sheet's best header row matches a wells table (0 = not at all). */
+export function sheetScore(rows) {
+  const h = findHeaderRow(rows);
+  return h < 0 ? 0 : headerScore(rows[h]);
+}
+
+/** Index of the header row; reports often carry a title or blank lines above it. */
+export function findHeaderRow(rows) {
+  let best = -1;
+  let bestScore = 1;
+  for (let i = 0; i < Math.min(rows.length, 25); i++) {
+    const sc = headerScore(rows[i]);
+    if (sc > bestScore) { best = i; bestScore = sc; }
+  }
+  return best >= 0 ? best : rows.findIndex((r) => r.some((c) => String(c ?? '').trim()));
+}
+
+const has = (v) => v !== null && v !== undefined && v !== '';
+
 /**
- * Build wells from CSV text. A sheet may hold one row per well, or one row per
- * well per day (a daily log); rows are grouped by well name and the latest
- * dated row becomes the well's current reading, the rest its history.
+ * Read sheet rows (CSV or Excel, as arrays of cells) into one record per row.
+ * A sheet may hold one row per well, or one row per well per day (a daily
+ * log). Without a date column every row is stamped with `defaultDate`, so a
+ * file imported each day still builds up each well's history.
  */
-export function wellsFromCsv(text) {
-  const rows = parseCsv(text);
-  if (rows.length < 2) throw new Error('الملف لا يحتوي على بيانات (يلزم صف عناوين وصف واحد على الأقل).');
-  const headers = rows[0].map((h) => h.trim());
+export function recordsFromRows(rows, { defaultDate = null } = {}) {
+  const h = findHeaderRow(rows);
+  if (h < 0 || rows.length - h < 2) throw new Error('الملف لا يحتوي على بيانات (يلزم صف عناوين وصف واحد على الأقل).');
+  const headers = rows[h].map((x) => String(x ?? '').trim());
   // Each known column is taken by the first header that maps to it; repeats
   // are kept as extra columns.
   const used = new Set();
-  const cols = headers.map((h) => {
-    const c = columnFor(h);
+  const cols = headers.map((x) => {
+    const c = columnFor(x);
     if (!c || used.has(c)) return null;
     used.add(c);
     return c;
   });
   let nameIdx = cols.indexOf('name');
-  if (nameIdx < 0) nameIdx = 0; // fall back to the first column
+  if (nameIdx < 0) nameIdx = headers.findIndex(Boolean); // fall back to the first titled column
   cols[nameIdx] = 'name';
-  const allRecs = [];
+  const hasDate = cols.includes('date');
 
-  const byName = new Map();
-  for (const r of rows.slice(1)) {
-    const name = (r[nameIdx] || '').trim();
-    if (!name) continue;
+  const records = [];
+  for (const r of rows.slice(h + 1)) {
+    const name = String(r[nameIdx] ?? '').trim();
+    // Skip blank rows and repeated header or totals rows.
+    if (!name || name === headers[nameIdx] || /^(total|المجموع|الإجمالي|الاجمالي)$/i.test(name)) continue;
     const rec = { name, extra: {} };
-    headers.forEach((h, i) => {
-      const val = (r[i] ?? '').trim();
+    headers.forEach((title, i) => {
+      const val = String(r[i] ?? '').trim();
       const col = cols[i];
       if (col === 'name') return;
-      if (!col) { if (val) rec.extra[h] = val; return; }
+      if (!col) { if (title && val) rec.extra[title] = val; return; }
       if (NUMERIC.has(col)) rec[col] = toNumber(val);
       else if (col === 'date') rec.date = toIsoDate(val);
       else rec[col] = val;
     });
-    allRecs.push(rec);
-    if (!byName.has(name)) byName.set(name, []);
-    byName.get(name).push(rec);
+    if (!hasDate) rec.date = defaultDate;
+    records.push(rec);
   }
+  if (!records.length) throw new Error('لم يُعثر على أي بئر في الملف.');
 
   // Water cut given as a fraction (0.35) rather than a percentage (35).
-  const wcs = allRecs.map((x) => x.water).filter((x) => x !== null && x !== undefined);
+  const wcs = records.map((x) => x.water).filter((x) => x !== null && x !== undefined);
   if (wcs.length && wcs.every((x) => x >= 0 && x <= 1) && wcs.some((x) => x > 0 && x < 1)) {
-    for (const x of allRecs) if (x.water !== null && x.water !== undefined) x.water = Math.round(x.water * 1000) / 10;
+    for (const x of records) if (x.water !== null && x.water !== undefined) x.water = Math.round(x.water * 1000) / 10;
   }
+  return { records, columns: headers.filter(Boolean), unmapped: headers.filter((x, i) => x && !cols[i]) };
+}
 
+/**
+ * Add a new import to the saved log. A well's reading for a day replaces any
+ * earlier reading for that same day; days older than `keepDays` before the
+ * newest are dropped so the log stays small.
+ */
+export function mergeRecords(existing, incoming, keepDays = 60) {
+  const key = (r) => `${r.name}|${r.date || ''}`;
+  const replaced = new Set(incoming.map(key));
+  const all = existing.filter((r) => !replaced.has(key(r))).concat(incoming);
+  const newest = all.reduce((m, r) => (r.date && r.date > m ? r.date : m), '');
+  if (!newest) return all;
+  const cutoff = new Date(Date.parse(newest) - keepDays * 86400000).toISOString().slice(0, 10);
+  return all.filter((r) => !r.date || r.date >= cutoff);
+}
+
+/** Group records by well: the latest dated one is the current reading, the rest its history. */
+export function wellsFromRecords(records) {
+  const byName = new Map();
+  for (const r of records) {
+    if (!byName.has(r.name)) byName.set(r.name, []);
+    byName.get(r.name).push(r);
+  }
   const wells = [];
   for (const [name, recs] of byName) {
     recs.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
@@ -186,7 +239,7 @@ export function wellsFromCsv(text) {
     const merged = { ...cur, extra: { ...cur.extra } };
     for (let i = recs.length - 2; i >= 0; i--) {
       for (const k of ['field', 'area', 'reservoir', 'lat', 'lon']) {
-        if ((merged[k] === undefined || merged[k] === null || merged[k] === '') && recs[i][k]) merged[k] = recs[i][k];
+        if (!has(merged[k]) && has(recs[i][k])) merged[k] = recs[i][k];
       }
     }
     wells.push({
@@ -198,7 +251,16 @@ export function wellsFromCsv(text) {
     });
   }
   wells.sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true }));
-  return { wells, columns: headers, unmapped: headers.filter((h, i) => !cols[i]) };
+  return wells;
+}
+
+export function wellsFromRows(rows, opts) {
+  const parsed = recordsFromRows(rows, opts);
+  return { ...parsed, wells: wellsFromRecords(parsed.records) };
+}
+
+export function wellsFromCsv(text, opts) {
+  return wellsFromRows(parseCsv(text), opts);
 }
 
 /** Totals for the dashboard. */

@@ -26,3 +26,11 @@ export function timeLabel(ms) {
   const mm = String(t.getMinutes()).padStart(2, '0');
   return `${t.getDate()}/${t.getMonth() + 1} ${hh}:${mm}`;
 }
+
+/** "بئر واحد", "بئران", "3 آبار", "11 بئر"… */
+export function wellsCount(n) {
+  if (n === 1) return 'بئر واحد';
+  if (n === 2) return 'بئران';
+  if (n >= 3 && n <= 10) return `${n} آبار`;
+  return `${n} بئر`;
+}

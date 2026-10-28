@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { colors, font, statusColors, rtl } from '../theme';
-import { num, pct } from '../format';
+import { num, pct, dateLabel } from '../format';
 
 export function StatusBadge({ status }) {
   const c = statusColors[status.id] || statusColors.other;
@@ -21,7 +21,7 @@ function trend(well) {
   return { up: change > 0, text: `${change > 0 ? '▲' : '▼'} ${num(Math.abs(change), 0)}%` };
 }
 
-export default function WellRow({ well, onPress }) {
+export default function WellRow({ well, latest, onPress }) {
   const t = trend(well);
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}>
@@ -31,6 +31,9 @@ export default function WellRow({ well, onPress }) {
       </View>
       {(well.field || well.area) ? (
         <Text style={styles.sub}>{[well.field, well.area].filter(Boolean).join(' · ')}</Text>
+      ) : null}
+      {well.date && latest && well.date < latest ? (
+        <Text style={[styles.sub, { color: colors.warn }]}>آخر قراءة لهذا البئر: {dateLabel(well.date)}</Text>
       ) : null}
       {(well.oil !== undefined || well.water !== undefined) ? (
         <View style={styles.stats}>

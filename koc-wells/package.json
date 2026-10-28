@@ -8,7 +8,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "test": "node src/data/__tests__/run.mjs",
-    "export:web": "expo export --platform web"
+    "export:web": "expo export --platform web",
+    "build:pages": "node scripts/build-pages.mjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

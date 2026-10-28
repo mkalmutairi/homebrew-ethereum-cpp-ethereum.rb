@@ -47,6 +47,13 @@ npm run web        # تشغيل في المتصفح
 npm test           # اختبارات قراءة الجدول
 ```
 
+## نسخة الويب (بدون تثبيت)
+النسخة المبنية في مجلد `docs/` تُنشر على GitHub Pages: من إعدادات المستودع ← Pages ← Deploy from a branch ←
+الفرع `claude/kuwait-oil-wells-app-tx4n5f` والمجلد `/docs`. الرابط يصير
+`https://mkalmutairi.github.io/homebrew-ethereum-cpp-ethereum.rb/`، وفي Safari: مشاركة ← إضافة إلى الشاشة الرئيسية.
+بعد أي تعديل على التطبيق: `npm run build:pages` ثم ارفع مجلد `docs/`.
+البيانات المستوردة في نسخة الويب محفوظة في متصفح الجوال فقط.
+
 ## التثبيت على الجوال
 يحتاج حسابًا مجانيًا على [expo.dev](https://expo.dev)، والأوامر تُشغَّل من جهاز كمبيوتر داخل مجلد `koc-wells`:
 

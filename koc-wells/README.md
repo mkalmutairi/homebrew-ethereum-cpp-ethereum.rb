@@ -47,7 +47,19 @@ npm run web        # تشغيل في المتصفح
 npm test           # اختبارات قراءة الجدول
 ```
 
-لبناء نسخة قابلة للتثبيت: `npx eas build --platform android` (أو `ios`).
+## التثبيت على الجوال
+يحتاج حسابًا مجانيًا على [expo.dev](https://expo.dev)، والأوامر تُشغَّل من جهاز كمبيوتر داخل مجلد `koc-wells`:
+
+```bash
+npm install -g eas-cli
+eas login
+```
+
+- **أندرويد** (مجاني): `eas build --platform android --profile preview` ← يعطيك رابطًا لملف APK، افتحه على الجوال وثبّته.
+- **آيفون** يحتاج عضوية [Apple Developer](https://developer.apple.com/programs/) (99 دولارًا سنويًا):
+  `eas build --platform ios --profile production` ثم `eas submit --platform ios` ← يصل التطبيق إلى TestFlight، ومنه يُثبَّت على الجوال
+  (ويمكن دعوة زملاء العمل عبر TestFlight أيضًا).
+- **للتجربة بدون بناء**: ثبّت تطبيق Expo Go من المتجر، ثم شغّل `npm start` وامسح رمز QR بكاميرا الجوال (يجب أن يكون الجوال والكمبيوتر على نفس الشبكة).
 
 ## بنية المشروع
 - `src/data/wells.mjs` — قراءة CSV، إيجاد صف العناوين، التعرف على الأعمدة العربية والإنجليزية، توحيد الحالات، تجميع السجل اليومي لكل بئر، والملخص والتصفية (JavaScript خالص قابل للاختبار).
